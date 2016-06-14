@@ -24,7 +24,7 @@
 from PyQt4.QtCore import Qt, QSettings, QTranslator, qVersion, QCoreApplication
 from PyQt4.QtGui import QAction, QIcon, QFileDialog, QPixmap
 from qgis.gui import QgsMessageBar
-# Initialize Qt resources from file resources.py
+# Initialize Qt resources from file resources.pys
 import resources
 # Import the code for the dialog
 from vme_helper_dialog import VmeHelperDialog
@@ -71,8 +71,19 @@ class VmeHelper:
         self.toolbar.setObjectName(u'VmeHelper')
         
         #init UI
+        #-------
+        self.layers = []
+        
+        #input layer
         self.dlg.sourceComboBox.clear()
+        self.dlg.sourceComboBox.currentIndexChanged.connect(self.state_changed_layer)
         self.dlg.sourceCheckBox.setCheckState(Qt.Unchecked)
+
+        #VME type
+        self.dlg.attrComboBox.clear()
+        self.dlg.attrComboBox.setEnabled(False)
+        self.dlg.attrCheckBox.setCheckState(Qt.Unchecked)
+        self.dlg.attrCheckBox.stateChanged.connect(self.state_changed_attrs)
         
         #output
         self.dlg.outLineEdit.clear()
@@ -189,19 +200,87 @@ class VmeHelper:
         # remove the toolbar
         del self.toolbar
 
-    def write_sql_file(self, filename, layer):
+    def fetch_layer_attrs(self):
+        self.dlg.attrComboBox.clear()
+        layerIndex = self.dlg.sourceComboBox.currentIndex()
+        if layerIndex != -1:
+            layer = self.layers[layerIndex]
+            fields = layer.pendingFields()   
+            field_names = [field.name() for field in fields]
+            self.dlg.attrComboBox.addItems(field_names)
+
+    def get_vme_type(self):
+        vmeType = ""
+        if self.dlg.vmeType1.isChecked():
+            vmeType = "VME"
+        elif self.dlg.vmeType2.isChecked():
+            vmeType = "BTM_FISH"
+        elif self.dlg.vmeType3.isChecked():
+            vmeType = "OTHER"
+        return vmeType
+        
+    def state_changed_layer(self, int):
+        if self.dlg.attrCheckBox.checkState() == Qt.Checked:
+            self.fetch_layer_attrs()
+            
+    def state_changed_attrs(self, int):
+        if self.dlg.attrCheckBox.checkState() == Qt.Checked:
+            self.dlg.attrComboBox.setEnabled(True)
+            self.fetch_layer_attrs()
+        else:
+            self.dlg.attrComboBox.clear()
+            self.dlg.attrComboBox.setEnabled(False)
+        
+    def write_sql_file(self, filename, layer, vmeType):
         output_file = open(filename, 'w')
         fields = layer.pendingFields()
         fieldnames = [field.name() for field in fields]
         targetFeatures = layer.getFeatures()
         if self.dlg.sourceCheckBox.checkState() == Qt.Checked:
-            print "taking selected features only"
             targetFeatures = layer.selectedFeatures()
+        
+        dataType = vmeType
         for f in targetFeatures:
+            line = ""
+
+            """ Define dataType """
+            if vmeType == "":
+                attrIndex = self.dlg.attrComboBox.currentIndex()
+                dataType = f.attributes()[attrIndex]
+            
+            """ Prepare SQL statements according to dataType """
             geom = f.geometry()
-            line = "UPDATE VME.GEOREF SET WKT_GEOM = '"+geom.exportToWkt()+"' WHERE GEOGRAPHICFEATUREID = '"+f['VME_AREA_T']+"';" + "\n"
-            unicode_line = line.encode('utf-8')
-            output_file.write(unicode_line)
+            if  dataType == "VME":
+                vmeTable = "VME.GEOREF"
+                vmeFilterField = "GEOGRAPHICFEATUREID"
+                line = "UPDATE "+vmeTable+" SET WKT_GEOM = '"+geom.exportToWkt()+"' WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
+            else :
+                
+                dbFields = ["VME_ID","LOCAL_NAME","YEAR","END_YEAR","OWNER","VME_AREA_TIME","GLOB_TYPE","GLOB_NAME","REG_TYPE","REG_NAME","SURFACE"]
+           
+                vmeTable = ""
+                if dataType == "BTM_FISH":
+                    vmeTable = "FIGIS_GIS.VME_GIS_BFA"
+                elif dataType == "OTHER":
+                    vmeTable = "FIGIS_GIS.VME_GIS_OARA"
+                vmeFilterField = "VME_AREA_TIME"
+                line = "UPDATE "+vmeTable+" ";
+                line += "SET"
+                line += " THE_GEOM = SDO_UTIL.FROM_WKTGEOMETRY('"+ geom.exportToWkt() +"')"
+                for dbField in dbFields:
+                    field = dbField
+                    if dbField == "VME_AREA_TIME": continue                 
+                    fieldValue = f[field]
+                    if dbField != "SURFACE" and dbField != "YEAR" and dbField != "END_YEAR":
+                        fieldValue = "'"+fieldValue+"'"
+                    line += ","+dbField+" = "+str(fieldValue)
+                    
+                line += " WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
+                
+            """ Write line to SQL file"""
+            if line != "":
+                unicode_line = line.encode('utf-8')
+                output_file.write(unicode_line)
         output_file.close()
         return filename
 		
@@ -213,9 +292,9 @@ class VmeHelper:
         """Run method that performs all the real work"""
         self.dlg.sourceComboBox.clear()
         self.dlg.sourceCheckBox.setCheckState(Qt.Unchecked)
-        layers = self.iface.legendInterface().layers()
+        self.layers = self.iface.legendInterface().layers()
         layer_list = []
-        for layer in layers:
+        for layer in self.layers:
 			layer_list.append(layer.name())
 	
         self.dlg.sourceComboBox.addItems(layer_list)
@@ -232,19 +311,29 @@ class VmeHelper:
             if selectedLayerIndex == -1:
                 self.iface.messageBar().pushMessage("Error", "No input layer selected", level=QgsMessageBar.CRITICAL)
                 return
-            selectedLayer = layers[selectedLayerIndex]
+            selectedLayer = self.layers[selectedLayerIndex]
             
             #input features selection
             if (self.dlg.sourceCheckBox.checkState() == Qt.Checked) and (len(selectedLayer.selectedFeatures()) == 0):
                 self.iface.messageBar().pushMessage("Error", "No features selected in input layer", level=QgsMessageBar.CRITICAL)
                 return
             
+            #get vme type
+            vmeType = self.get_vme_type()
+            if vmeType == "":
+                if self.dlg.attrCheckBox.checkState() == Qt.Unchecked:
+                    self.iface.messageBar().pushMessage("Warning", "Please select a VME type or check VME type selection by attribute", level=QgsMessageBar.WARNING)
+                    return
+            else :
+                if self.dlg.attrCheckBox.checkState() == Qt.Checked:
+                    vmeType = ""
+            
             #output
             outfile = self.dlg.outLineEdit.text()
             if outfile == "":
                 self.iface.messageBar().pushMessage("Error", "No output SQL file specified", level=QgsMessageBar.CRITICAL)
                 return    
-            out = self.write_sql_file(outfile, selectedLayer)
+            out = self.write_sql_file(outfile, selectedLayer, vmeType)
             if out:
                 self.iface.messageBar().pushMessage("Info", "The SQL file '"+out+"' has been successfully created!", level=QgsMessageBar.INFO)
                 return 
