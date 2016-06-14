@@ -246,5 +246,5 @@ class VmeHelper:
                 return    
             out = self.write_sql_file(outfile, selectedLayer)
             if out:
-                iface.messageBar().pushMessage("Info", "The SQL file '"+out+"' has been successfully created!", level=QgsMessageBar.INFO)
+                self.iface.messageBar().pushMessage("Info", "The SQL file '"+out+"' has been successfully created!", level=QgsMessageBar.INFO)
                 return 
