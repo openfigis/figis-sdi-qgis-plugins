@@ -9,6 +9,8 @@ The plugin allows to
 
 Overview
 
+![https://raw.githubusercontent.com/openfigis/figis-sdi-qgis-plugins/master/VmeHelper/images/screenshot.jpg](https://raw.githubusercontent.com/openfigis/figis-sdi-qgis-plugins/master/VmeHelper/images/screenshot.jpg)
+
 Target data scopes:
 
 * _**VME closures**_: SQL statements for WKT_GEOM field updates in VME database
