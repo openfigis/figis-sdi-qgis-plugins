@@ -20,8 +20,10 @@
  *                                                                         *
  ***************************************************************************/
 """
+#imports
 from PyQt4.QtCore import Qt, QSettings, QTranslator, qVersion, QCoreApplication
 from PyQt4.QtGui import QAction, QIcon, QFileDialog, QPixmap
+from qgis.gui import QgsMessageBar
 # Initialize Qt resources from file resources.py
 import resources
 # Import the code for the dialog
@@ -69,12 +71,12 @@ class VmeHelper:
         self.toolbar.setObjectName(u'VmeHelper')
         
         #init UI
-        self.dlg.comboBox.clear()
-        self.dlg.checkBox.setCheckState(Qt.Unchecked)
+        self.dlg.sourceComboBox.clear()
+        self.dlg.sourceCheckBox.setCheckState(Qt.Unchecked)
         
         #output
-        self.dlg.lineEdit.clear()
-        self.dlg.pushButton.clicked.connect(self.select_output_file)
+        self.dlg.outLineEdit.clear()
+        self.dlg.outPushButton.clicked.connect(self.select_output_file)
         
 
     # noinspection PyMethodMayBeStatic
@@ -187,13 +189,12 @@ class VmeHelper:
         # remove the toolbar
         del self.toolbar
 
-    def write_sql_file(self,layer):
-        filename = self.dlg.lineEdit.text()
+    def write_sql_file(self, filename, layer):
         output_file = open(filename, 'w')
         fields = layer.pendingFields()
         fieldnames = [field.name() for field in fields]
         targetFeatures = layer.getFeatures()
-        if self.dlg.checkBox.checkState() == Qt.Checked:
+        if self.dlg.sourceCheckBox.checkState() == Qt.Checked:
             print "taking selected features only"
             targetFeatures = layer.selectedFeatures()
         for f in targetFeatures:
@@ -202,21 +203,22 @@ class VmeHelper:
             unicode_line = line.encode('utf-8')
             output_file.write(unicode_line)
         output_file.close()
+        return filename
 		
     def select_output_file(self):
         filename = QFileDialog.getSaveFileName(self.dlg, "Select output file ","", '*.sql')
-        self.dlg.lineEdit.setText(filename)
+        self.dlg.outLineEdit.setText(filename)
 		
     def run(self):
         """Run method that performs all the real work"""
-        self.dlg.comboBox.clear()
-        self.dlg.checkBox.setCheckState(Qt.Unchecked)
+        self.dlg.sourceComboBox.clear()
+        self.dlg.sourceCheckBox.setCheckState(Qt.Unchecked)
         layers = self.iface.legendInterface().layers()
         layer_list = []
         for layer in layers:
 			layer_list.append(layer.name())
 	
-        self.dlg.comboBox.addItems(layer_list)
+        self.dlg.sourceComboBox.addItems(layer_list)
 		
         # show the dialog
         self.dlg.show()
@@ -224,8 +226,25 @@ class VmeHelper:
         result = self.dlg.exec_()
         # See if OK was pressed
         if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
-            selectedLayerIndex = self.dlg.comboBox.currentIndex()
+        
+            #input layer
+            selectedLayerIndex = self.dlg.sourceComboBox.currentIndex()
+            if selectedLayerIndex == -1:
+                self.iface.messageBar().pushMessage("Error", "No input layer selected", level=QgsMessageBar.CRITICAL)
+                return
             selectedLayer = layers[selectedLayerIndex]
-            self.write_sql_file(selectedLayer)
+            
+            #input features selection
+            if (self.dlg.sourceCheckBox.checkState() == Qt.Checked) and (len(selectedLayer.selectedFeatures()) == 0):
+                self.iface.messageBar().pushMessage("Error", "No features selected in input layer", level=QgsMessageBar.CRITICAL)
+                return
+            
+            #output
+            outfile = self.dlg.outLineEdit.text()
+            if outfile == "":
+                self.iface.messageBar().pushMessage("Error", "No output SQL file specified", level=QgsMessageBar.CRITICAL)
+                return    
+            out = self.write_sql_file(outfile, selectedLayer)
+            if out:
+                iface.messageBar().pushMessage("Info", "The SQL file '"+out+"' has been successfully created!", level=QgsMessageBar.INFO)
+                return 

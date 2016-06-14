@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>470</width>
-    <height>406</height>
+    <height>566</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,7 +17,7 @@
    <property name="geometry">
     <rect>
      <x>110</x>
-     <y>370</y>
+     <y>530</y>
      <width>341</width>
      <height>32</height>
     </rect>
@@ -29,7 +29,7 @@
     <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
    </property>
   </widget>
-  <widget class="QGroupBox" name="groupBox">
+  <widget class="QGroupBox" name="sourceGroupBox">
    <property name="geometry">
     <rect>
      <x>20</x>
@@ -41,7 +41,7 @@
    <property name="title">
     <string>Source</string>
    </property>
-   <widget class="QLabel" name="label">
+   <widget class="QLabel" name="sourceLabel">
     <property name="geometry">
      <rect>
       <x>20</x>
@@ -54,7 +54,7 @@
      <string>Select source layer</string>
     </property>
    </widget>
-   <widget class="QComboBox" name="comboBox">
+   <widget class="QComboBox" name="sourceComboBox">
     <property name="geometry">
      <rect>
       <x>20</x>
@@ -64,7 +64,7 @@
      </rect>
     </property>
    </widget>
-   <widget class="QCheckBox" name="checkBox">
+   <widget class="QCheckBox" name="sourceCheckBox">
     <property name="geometry">
      <rect>
       <x>20</x>
@@ -78,11 +78,11 @@
     </property>
    </widget>
   </widget>
-  <widget class="QGroupBox" name="groupBox_3">
+  <widget class="QGroupBox" name="outGroupBox">
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>260</y>
+     <y>420</y>
      <width>431</width>
      <height>101</height>
     </rect>
@@ -90,7 +90,7 @@
    <property name="title">
     <string>Output</string>
    </property>
-   <widget class="QLabel" name="label_4">
+   <widget class="QLabel" name="outLabel">
     <property name="geometry">
      <rect>
       <x>20</x>
@@ -103,7 +103,7 @@
      <string>Specify output SQL file</string>
     </property>
    </widget>
-   <widget class="QLineEdit" name="lineEdit">
+   <widget class="QLineEdit" name="outLineEdit">
     <property name="geometry">
      <rect>
       <x>20</x>
@@ -113,7 +113,7 @@
      </rect>
     </property>
    </widget>
-   <widget class="QPushButton" name="pushButton">
+   <widget class="QPushButton" name="outPushButton">
     <property name="geometry">
      <rect>
       <x>340</x>
@@ -162,8 +162,82 @@
     <pixmap resource="resources.qrc">:/plugins/VmeHelper/images/vme_logo.jpg</pixmap>
    </property>
   </widget>
+  <widget class="QGroupBox" name="vmeTypeGroupBox">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>260</y>
+     <width>431</width>
+     <height>151</height>
+    </rect>
+   </property>
+   <property name="title">
+    <string>VME type</string>
+   </property>
+   <widget class="QCheckBox" name="attrCheckBox">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>70</y>
+      <width>191</width>
+      <height>17</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Inherit VME type by attribute</string>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="vmeType1">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>30</y>
+      <width>82</width>
+      <height>17</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>VME closures</string>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="vmeType2">
+    <property name="geometry">
+     <rect>
+      <x>140</x>
+      <y>30</y>
+      <width>121</width>
+      <height>17</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Bottom fishing areas</string>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="vmeType3">
+    <property name="geometry">
+     <rect>
+      <x>310</x>
+      <y>30</y>
+      <width>82</width>
+      <height>17</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Other areas</string>
+    </property>
+   </widget>
+   <widget class="QComboBox" name="attrComboBox">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>100</y>
+      <width>391</width>
+      <height>22</height>
+     </rect>
+    </property>
+   </widget>
+  </widget>
  </widget>
- <resources/>
  <connections>
   <connection>
    <sender>button_box</sender>
