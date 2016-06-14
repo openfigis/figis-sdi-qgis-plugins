@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/plugins/VmeHelper" >
+        <file>images/icon.png</file>
+		<file>images/vme_logo.jpg</file>
+    </qresource>
+</RCC>
