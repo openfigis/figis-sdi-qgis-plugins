@@ -88,6 +88,9 @@ class VmeHelper:
         self.dlg.attrComboBox.setEnabled(False)
         self.dlg.attrCheckBox.setCheckState(Qt.Unchecked)
         self.dlg.attrCheckBox.stateChanged.connect(self.state_changed_attrs)
+        self.dlg.vmeType1.toggled.connect(self.state_changed_vmetype)
+        self.dlg.vmeType2.toggled.connect(self.state_changed_vmetype)
+        self.dlg.vmeType2.toggled.connect(self.state_changed_vmetype)
         
         #output
         self.dlg.outLineEdit.clear()
@@ -222,20 +225,45 @@ class VmeHelper:
         elif self.dlg.vmeType3.isChecked():
             vmeType = "OTHER"
         return vmeType
-        
+       
+    def get_sql_type(self):
+        sqlType = ""
+        if self.dlg.sqlType1.isChecked():
+            sqlType = "UPDATE"
+        elif self.dlg.sqlType2.isChecked():
+            sqlType = "INSERT"
+        return sqlType
+       
     def state_changed_layer(self, int):
         if self.dlg.attrCheckBox.checkState() == Qt.Checked:
             self.fetch_layer_attrs()
-            
+        
+    def state_changed_vmetype(self, enabled):
+        if self.dlg.vmeType1.isChecked():   
+            if self.dlg.attrCheckBox.checkState() == Qt.Unchecked:
+                self.dlg.sqlType2.setEnabled(False)
+                self.dlg.sqlType1.setChecked(True)  
+            else:
+                self.dlg.sqlType2.setEnabled(True)
+            return
+        elif (self.dlg.vmeType2.isChecked() or self.dlg.vmeType3.isChecked()):
+            self.dlg.sqlType2.setEnabled(True)
+            return
+    
     def state_changed_attrs(self, int):
         if self.dlg.attrCheckBox.checkState() == Qt.Checked:
             self.dlg.attrComboBox.setEnabled(True)
             self.fetch_layer_attrs()
+            if self.dlg.vmeType1.isChecked():
+                self.dlg.sqlType2.setEnabled(True)
         else:
             self.dlg.attrComboBox.clear()
             self.dlg.attrComboBox.setEnabled(False)
+            if self.dlg.vmeType1.isChecked():
+                self.dlg.sqlType2.setEnabled(False)
+                self.dlg.sqlType1.setChecked(True) 
         
-    def write_sql_file(self, filename, layer, vmeType):
+    def write_sql_file(self, filename, layer, vmeType, sqlType):
         output_file = open(filename, 'w')
         fields = layer.pendingFields()
         fieldnames = [field.name() for field in fields]
@@ -260,6 +288,7 @@ class VmeHelper:
             headerline += "Inherited from field '"+fieldnames[self.dlg.attrComboBox.currentIndex()]+"'\n"
         else:
             headerline += vmeType+"\n"
+        headerline += "--   * SQL Statement type: "+sqlType+"\n"
         headerline += "--   * Output file name: "+filename+"\n"
         headerline += "\n\n"
         unicode_headerline = headerline.encode('utf-8')
@@ -278,39 +307,59 @@ class VmeHelper:
             """ Prepare SQL statements according to dataType """
             geom = f.geometry()
             if dataType == "VME":
+                #case of VME closures
                 vmeTable = "VME.GEOREF"
                 vmeFilterField = "GEOGRAPHICFEATUREID"
-                line = "-- VME.GEOREF SQL UPDATE statement - "+vmeFilterField+" = '"+f['VME_AREA_T']+"'\n"
-                line += "UPDATE "+vmeTable+" SET WKT_GEOM = '"+geom.exportToWkt()+"' WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
+                
+                #sql comment/statement
+                if sqlType == "UPDATE":
+                    line = "-- VME.GEOREF SQL UPDATE statement - "+vmeFilterField+" = '"+f['VME_AREA_T']+"'\n"
+                    line += "UPDATE "+vmeTable+" SET WKT_GEOM = '"+geom.exportToWkt()+"' WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
+                elif sqlType == "INSERT":
+                    line = "-- No SQL statement generated for "+vmeFilterField+" = '"+f['VME_AREA_T']+"'. "
+                    line += "INSERT statements are not supported for 'VME closures' type.\n\n"
+                    
             else :
-                
-                dbFields = ["VME_ID","LOCAL_NAME","YEAR","END_YEAR","OWNER","VME_AREA_TIME","GLOB_TYPE","GLOB_NAME","REG_TYPE","REG_NAME","SURFACE"]
-           
+                #case of BFAs and OARAs
+                dbFields = ["VME_ID","LOCAL_NAME","YEAR","END_YEAR","OWNER","VME_AREA_T","GLOB_TYPE","GLOB_NAME","REG_TYPE","REG_NAME","SURFACE"]
                 vmeTable = ""
-                
                 if dataType == "BTM_FISH":
                     vmeTable = "FIGIS_GIS.VME_GIS_BFA"
                 elif dataType == "OTHER":
                     vmeTable = "FIGIS_GIS.VME_GIS_OARA"
-                    
                 vmeFilterField = "VME_AREA_TIME"
+                
                 if vmeTable != "":
-                    line = "-- "+vmeTable+" SQL UPDATE statement - "+vmeFilterField+" = '"+f['VME_AREA_T']+"'\n"
-                    line += "UPDATE "+vmeTable+" "
-                    line += "SET"
-                    line += " THE_GEOM = SDO_UTIL.FROM_WKTGEOMETRY('"+ geom.exportToWkt() +"')"
-                    for dbField in dbFields:
-                        field = dbField
-                        if dbField == "VME_AREA_TIME": continue                 
-                        fieldValue = f[field]
-                        if dbField != "SURFACE" and dbField != "YEAR" and dbField != "END_YEAR":
-                            fieldValue = "'"+fieldValue+"'"
-                        line += ","+dbField+" = "+str(fieldValue)
-
-                    line += " WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
+                    #sql comment
+                    line = "-- "+vmeTable+" SQL "+sqlType+" statement - "+vmeFilterField+" = '"+f['VME_AREA_T']+"'\n"
+                    
+                    #sql statement (UPDATE or INSERT)
+                    if sqlType == "UPDATE":
+                        line += "UPDATE "+vmeTable+" "
+                        line += "SET"
+                        line += " THE_GEOM = SDO_UTIL.FROM_WKTGEOMETRY('"+ geom.exportToWkt() +"')"
+                        for dbField in dbFields:
+                            if dbField == "VME_AREA_T": continue                 
+                            fieldValue = f[dbField]
+                            if dbField != "SURFACE" and dbField != "YEAR" and dbField != "END_YEAR":
+                                fieldValue = "'"+fieldValue+"'"
+                            line += ","+dbField+" = "+str(fieldValue)
+                        line += " WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
+                        
+                    elif sqlType == "INSERT":
+                        sqlFields = ", ".join(dbFields)
+                        sqlFieldValues = []
+                        for dbField in dbFields:
+                            fieldValue = f[dbField]
+                            if dbField != "SURFACE" and dbField != "YEAR" and dbField != "END_YEAR":
+                               fieldValue = "'"+fieldValue+"'"
+                               sqlFieldValues.append(str(fieldValue))
+                        sqlFieldValues = ", ".join(sqlFieldValues)    
+                        line += "INSERT INTO "+vmeTable+" (THE_GEOM, "+sqlFields+")"
+                        line += " VALUES(SDO_UTIL.FROM_WKTGEOMETRY('"+ geom.exportToWkt() +"'), "+ sqlFieldValues +");\n\n"  
                 else:
                    line = "-- No SQL statement generated for "+vmeFilterField+" = '"+f['VME_AREA_T']+"'. "
-                   line += "Please check the field selected to inherit VME type is correct, and/or its values are correct and match the VME type classification ('VME','BTM_FISH','OTHER').\n"
+                   line += "Please check the field selected to inherit VME type is correct, and/or its values are correct and match the VME type classification ('VME','BTM_FISH','OTHER').\n\n"
                 
             """ Write line to SQL file"""
             if line != "":
@@ -357,18 +406,23 @@ class VmeHelper:
             vmeType = self.get_vme_type()
             if vmeType == "":
                 if self.dlg.attrCheckBox.checkState() == Qt.Unchecked:
-                    self.iface.messageBar().pushMessage("Warning", "Please select a VME type or check VME type selection by attribute", level=QgsMessageBar.WARNING)
+                    self.iface.messageBar().pushMessage("Error", "Please select a VME type or check VME type selection by attribute", level=QgsMessageBar.CRITICAL)
                     return
             else :
                 if self.dlg.attrCheckBox.checkState() == Qt.Checked:
                     vmeType = ""
             
-            #output
+            sqlType = self.get_sql_type()
+            if sqlType == "":
+                self.iface.messageBar().pushMessage("Error", "No SQL statement type selected", level=QgsMessageBar.CRITICAL)
+                return
+            
+            #output file
             outfile = self.dlg.outLineEdit.text()
             if outfile == "":
                 self.iface.messageBar().pushMessage("Error", "No output SQL file specified", level=QgsMessageBar.CRITICAL)
                 return    
-            out = self.write_sql_file(outfile, selectedLayer, vmeType)
+            out = self.write_sql_file(outfile, selectedLayer, vmeType, sqlType)
             if out:
                 self.iface.messageBar().pushMessage("Info", "The SQL file '"+out+"' has been successfully created!", level=QgsMessageBar.INFO)
                 return 
