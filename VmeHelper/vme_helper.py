@@ -24,6 +24,10 @@
 from PyQt4.QtCore import Qt, QSettings, QTranslator, qVersion, QCoreApplication
 from PyQt4.QtGui import QAction, QIcon, QFileDialog, QPixmap
 from qgis.gui import QgsMessageBar
+
+#other imports
+import time
+
 # Initialize Qt resources from file resources.pys
 import resources
 # Import the code for the dialog
@@ -77,7 +81,7 @@ class VmeHelper:
         #input layer
         self.dlg.sourceComboBox.clear()
         self.dlg.sourceComboBox.currentIndexChanged.connect(self.state_changed_layer)
-        self.dlg.sourceCheckBox.setCheckState(Qt.Unchecked)
+        self.dlg.sourceCheckBox.setCheckState(Qt.Checked)
 
         #VME type
         self.dlg.attrComboBox.clear()
@@ -238,7 +242,30 @@ class VmeHelper:
         targetFeatures = layer.getFeatures()
         if self.dlg.sourceCheckBox.checkState() == Qt.Checked:
             targetFeatures = layer.selectedFeatures()
+
+        #write header for sql file    
+        headerline = "-- QGIS VmeHelper plugin - https://github.com/openfigis/figis-sdi-qgis-plugins/tree/master/VmeHelper \n"
+        headerline += "-- SQL automatically generated on "+time.strftime("%c")+"\n"
+        headerline += "-- User parameters:\n"
+        headerline += "--   * input layer source: "+layer.source()+"\n"
+        headerline += "--   * input layer name: "+layer.name()+"\n"
+        headerline += "--   * selected features only: "
+        if self.dlg.sourceCheckBox.checkState() == Qt.Checked:
+            headerline += "YES"
+            headerline += " ("+str(len(targetFeatures))+" features)\n"
+        else:
+            headerline += "NO\n"
+        headerline += "--   * VME type: "
+        if self.dlg.attrCheckBox.checkState() == Qt.Checked:
+            headerline += "Inherited from field '"+fieldnames[self.dlg.attrComboBox.currentIndex()]+"'\n"
+        else:
+            headerline += vmeType+"\n"
+        headerline += "--   * Output file name: "+filename+"\n"
+        headerline += "\n\n"
+        unicode_headerline = headerline.encode('utf-8')
+        output_file.write(unicode_headerline)
         
+        #write SQL statements
         dataType = vmeType
         for f in targetFeatures:
             line = ""
@@ -250,32 +277,40 @@ class VmeHelper:
             
             """ Prepare SQL statements according to dataType """
             geom = f.geometry()
-            if  dataType == "VME":
+            if dataType == "VME":
                 vmeTable = "VME.GEOREF"
                 vmeFilterField = "GEOGRAPHICFEATUREID"
-                line = "UPDATE "+vmeTable+" SET WKT_GEOM = '"+geom.exportToWkt()+"' WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
+                line = "-- VME.GEOREF SQL UPDATE statement - "+vmeFilterField+" = '"+f['VME_AREA_T']+"'\n"
+                line += "UPDATE "+vmeTable+" SET WKT_GEOM = '"+geom.exportToWkt()+"' WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
             else :
                 
                 dbFields = ["VME_ID","LOCAL_NAME","YEAR","END_YEAR","OWNER","VME_AREA_TIME","GLOB_TYPE","GLOB_NAME","REG_TYPE","REG_NAME","SURFACE"]
            
                 vmeTable = ""
+                
                 if dataType == "BTM_FISH":
                     vmeTable = "FIGIS_GIS.VME_GIS_BFA"
                 elif dataType == "OTHER":
                     vmeTable = "FIGIS_GIS.VME_GIS_OARA"
-                vmeFilterField = "VME_AREA_TIME"
-                line = "UPDATE "+vmeTable+" ";
-                line += "SET"
-                line += " THE_GEOM = SDO_UTIL.FROM_WKTGEOMETRY('"+ geom.exportToWkt() +"')"
-                for dbField in dbFields:
-                    field = dbField
-                    if dbField == "VME_AREA_TIME": continue                 
-                    fieldValue = f[field]
-                    if dbField != "SURFACE" and dbField != "YEAR" and dbField != "END_YEAR":
-                        fieldValue = "'"+fieldValue+"'"
-                    line += ","+dbField+" = "+str(fieldValue)
                     
-                line += " WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
+                vmeFilterField = "VME_AREA_TIME"
+                if vmeTable != "":
+                    line = "-- "+vmeTable+" SQL UPDATE statement - "+vmeFilterField+" = '"+f['VME_AREA_T']+"'\n"
+                    line += "UPDATE "+vmeTable+" "
+                    line += "SET"
+                    line += " THE_GEOM = SDO_UTIL.FROM_WKTGEOMETRY('"+ geom.exportToWkt() +"')"
+                    for dbField in dbFields:
+                        field = dbField
+                        if dbField == "VME_AREA_TIME": continue                 
+                        fieldValue = f[field]
+                        if dbField != "SURFACE" and dbField != "YEAR" and dbField != "END_YEAR":
+                            fieldValue = "'"+fieldValue+"'"
+                        line += ","+dbField+" = "+str(fieldValue)
+
+                    line += " WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
+                else:
+                   line = "-- No SQL statement generated for "+vmeFilterField+" = '"+f['VME_AREA_T']+"'. "
+                   line += "Please check the field selected to inherit VME type is correct, and/or its values are correct and match the VME type classification ('VME','BTM_FISH','OTHER').\n"
                 
             """ Write line to SQL file"""
             if line != "":
@@ -291,7 +326,7 @@ class VmeHelper:
     def run(self):
         """Run method that performs all the real work"""
         self.dlg.sourceComboBox.clear()
-        self.dlg.sourceCheckBox.setCheckState(Qt.Unchecked)
+        self.dlg.sourceCheckBox.setCheckState(Qt.Checked)
         self.layers = self.iface.legendInterface().layers()
         layer_list = []
         for layer in self.layers:
