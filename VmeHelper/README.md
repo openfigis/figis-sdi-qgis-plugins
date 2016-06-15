@@ -1,11 +1,25 @@
 # VmeHelper
 Simple plugin intented to help maintaining the GIS data of the Vulnerable Marine Ecosystem database
 
-The plugin allows to
+## Overview
 
-* select a layer (available through the QGIS workspace) or its selected features: typically a GDB layer
-* select the output SQL file where SQL statements will be written and from where they can be copied and executed to maintain the database
+![https://raw.githubusercontent.com/openfigis/figis-sdi-qgis-plugins/master/VmeHelper/images/screenshot.jpg](https://raw.githubusercontent.com/openfigis/figis-sdi-qgis-plugins/master/VmeHelper/images/screenshot.jpg)
 
-Target data scopes:
+## Description
 
-* WKT geometry for VME closures (SQL UPDATE statements)
+The plugin allows to:
+
+* **select an input layer** (available through the QGIS workspace) or its selected features: typically a GDB layer
+* **select the VME type** (VME closures, BFAs, OARAs) or inherit such VME type from an attribute.
+* **set the output SQL file** where SQL statements will be written and from where they can be copied and executed to maintain the database(s)
+
+**Notes:**
+
+* In case a VME type is selected, the plugin considers all the layer features set as input are targeting this VME type, and consequently applies the SQL statement defined for this VME type.
+* In case a VME type is selected, byt the "Inherit VME type from attribute" box is checked, the latter prevails.
+
+**Target data scopes:**
+
+* _**VME closures**_: SQL statements for WKT_GEOM field updates in VME database
+* _**Bottom Fishing Areas (BFA)**_: SQL statements for multi-field updates in FIGIS_GIS database
+* _**Other areas (OARA)**_: SQL statements for multi-field updates in FIGIS_GIS database
