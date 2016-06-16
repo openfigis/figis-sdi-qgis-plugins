@@ -233,7 +233,110 @@ class VmeHelper:
         elif self.dlg.sqlType2.isChecked():
             sqlType = "INSERT"
         return sqlType
-       
+      
+    def get_chunks(self, string, length):
+        return (string[0+i:length+i] for i in range(0, len(string), length))
+      
+    def prepare_sql_statement(self, dataType, sqlType, f):
+    
+        sql = ""
+    
+        #define sql approach according to geom wkt size
+        chunkSize = 4000
+        geom = f.geometry()
+        geomWkt = geom.exportToWkt()
+        geomSize = len(geomWkt)
+        chunkNote = "-- Note: Given the size of the geometry WKT ("+str(geomSize)+" characters), the SQL generated is a PL/SQL procedure based on WKT chunks.\n"
+        chunks = []
+        byChunks = False
+        if geomSize > chunkSize:
+            byChunks = True
+            chunks = self.get_chunks(geomWkt, chunkSize)
+            
+        if dataType == "VME":
+            #case of VME closures
+            vmeTable = "VME.GEOREF"
+            vmeFilterField = "GEOGRAPHICFEATUREID"
+            
+            #sql comment/statement
+            if sqlType == "UPDATE":
+                sql = "-- VME.GEOREF SQL UPDATE statement - "+vmeFilterField+" = '"+f['VME_AREA_T']+"'\n"
+                if byChunks:
+                    sql += chunkNote
+                    sql += "DECLARE\n"
+                    sql += "   the_clob CLOB;\n"
+                    sql += "BEGIN\n"
+                    sql += "   the_clob := empty_clob();\n"
+                    for chunk in chunks:   
+                        sql += "   the_clob := CONCAT(the_clob,'"+chunk+"');\n"    
+                    sql += "   UPDATE "+vmeTable+" SET WKT_GEOM = the_clob WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
+                    sql += "END;"
+                else:   
+                    sql += "UPDATE "+vmeTable+" SET WKT_GEOM = "+geomWkt+" WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
+                
+            elif sqlType == "INSERT":
+                sql = "-- No SQL statement generated for "+vmeFilterField+" = '"+f['VME_AREA_T']+"'. "
+                sql += "INSERT statements are not supported for 'VME closures' type.\n\n"
+                    
+        else :
+            #case of BFAs and OARAs
+            dbFields = ["VME_ID","LOCAL_NAME","YEAR","END_YEAR","OWNER","VME_AREA_T","GLOB_TYPE","GLOB_NAME","REG_TYPE","REG_NAME","SURFACE"]
+            vmeTable = ""
+            if dataType == "BTM_FISH":
+                vmeTable = "FIGIS_GIS.VME_GIS_BFA"
+            elif dataType == "OTHER":
+                vmeTable = "FIGIS_GIS.VME_GIS_OARA"
+            vmeFilterField = "VME_AREA_TIME"
+            
+            if vmeTable != "":
+                #sql comment
+                sql = "-- "+vmeTable+" SQL "+sqlType+" statement - "+vmeFilterField+" = '"+f['VME_AREA_T']+"'\n"
+                thegeomField = "'"+ geomWkt +"'"
+                if byChunks:
+                    thegeomField = "the_clob"
+                    sql += chunkNote
+                    sql += "DECLARE\n"
+                    sql += "   the_clob CLOB;\n"
+                    sql += "BEGIN\n"
+                    sql += "   the_clob := empty_clob();\n"
+                    for chunk in chunks:   
+                        sql += "   the_clob := CONCAT(the_clob,'"+chunk+"');\n"    
+                                
+                #sql statement (UPDATE or INSERT)
+                if sqlType == "UPDATE":
+                    sql += "UPDATE "+vmeTable+" "
+                    sql += "SET"
+                    sql += " THE_GEOM = SDO_GEOMETRY("+thegeomField+",4326)"
+                    for dbField in dbFields:
+                        if dbField == "VME_AREA_T": continue                 
+                        fieldValue = f[dbField]
+                        if dbField != "SURFACE" and dbField != "YEAR" and dbField != "END_YEAR":
+                            fieldValue = "'"+fieldValue+"'"
+                        sql += ","+dbField+" = "+str(fieldValue)
+                    sql += " WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
+                    
+                elif sqlType == "INSERT":
+                    sqlFields = ", ".join(dbFields)
+                    sqlFieldValues = []
+                    for dbField in dbFields:
+                        fieldValue = f[dbField]
+                        if dbField != "SURFACE" and dbField != "YEAR" and dbField != "END_YEAR":
+                           fieldValue = "'"+fieldValue+"'"
+                           sqlFieldValues.append(str(fieldValue))
+                    sqlFieldValues = ", ".join(sqlFieldValues)    
+                    sql += "INSERT INTO "+vmeTable+" (THE_GEOM, "+sqlFields+")"
+                    sql += " VALUES(SDO_GEOMETRY("+thegeomField+",4326), "+ sqlFieldValues +");\n\n"
+                
+                if byChunks:
+                    sql += "END;"
+                    
+            else:
+               sql = "-- No SQL statement generated for "+vmeFilterField+" = '"+f['VME_AREA_T']+"'. "
+               sql += "Please check the field selected to inherit VME type is correct, and/or its values are correct and match the VME type classification ('VME','BTM_FISH','OTHER').\n\n"
+     
+        return sql
+     
+     
     def state_changed_layer(self, int):
         if self.dlg.attrCheckBox.checkState() == Qt.Checked:
             self.fetch_layer_attrs()
@@ -297,7 +400,6 @@ class VmeHelper:
         #write SQL statements
         dataType = vmeType
         for f in targetFeatures:
-            line = ""
 
             """ Define dataType """
             if vmeType == "":
@@ -305,61 +407,7 @@ class VmeHelper:
                 dataType = f.attributes()[attrIndex]
             
             """ Prepare SQL statements according to dataType """
-            geom = f.geometry()
-            if dataType == "VME":
-                #case of VME closures
-                vmeTable = "VME.GEOREF"
-                vmeFilterField = "GEOGRAPHICFEATUREID"
-                
-                #sql comment/statement
-                if sqlType == "UPDATE":
-                    line = "-- VME.GEOREF SQL UPDATE statement - "+vmeFilterField+" = '"+f['VME_AREA_T']+"'\n"
-                    line += "UPDATE "+vmeTable+" SET WKT_GEOM = '"+geom.exportToWkt()+"' WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
-                elif sqlType == "INSERT":
-                    line = "-- No SQL statement generated for "+vmeFilterField+" = '"+f['VME_AREA_T']+"'. "
-                    line += "INSERT statements are not supported for 'VME closures' type.\n\n"
-                    
-            else :
-                #case of BFAs and OARAs
-                dbFields = ["VME_ID","LOCAL_NAME","YEAR","END_YEAR","OWNER","VME_AREA_T","GLOB_TYPE","GLOB_NAME","REG_TYPE","REG_NAME","SURFACE"]
-                vmeTable = ""
-                if dataType == "BTM_FISH":
-                    vmeTable = "FIGIS_GIS.VME_GIS_BFA"
-                elif dataType == "OTHER":
-                    vmeTable = "FIGIS_GIS.VME_GIS_OARA"
-                vmeFilterField = "VME_AREA_TIME"
-                
-                if vmeTable != "":
-                    #sql comment
-                    line = "-- "+vmeTable+" SQL "+sqlType+" statement - "+vmeFilterField+" = '"+f['VME_AREA_T']+"'\n"
-                    
-                    #sql statement (UPDATE or INSERT)
-                    if sqlType == "UPDATE":
-                        line += "UPDATE "+vmeTable+" "
-                        line += "SET"
-                        line += " THE_GEOM = SDO_UTIL.FROM_WKTGEOMETRY('"+ geom.exportToWkt() +"')"
-                        for dbField in dbFields:
-                            if dbField == "VME_AREA_T": continue                 
-                            fieldValue = f[dbField]
-                            if dbField != "SURFACE" and dbField != "YEAR" and dbField != "END_YEAR":
-                                fieldValue = "'"+fieldValue+"'"
-                            line += ","+dbField+" = "+str(fieldValue)
-                        line += " WHERE "+vmeFilterField+" = '"+f['VME_AREA_T']+"';" + "\n\n"
-                        
-                    elif sqlType == "INSERT":
-                        sqlFields = ", ".join(dbFields)
-                        sqlFieldValues = []
-                        for dbField in dbFields:
-                            fieldValue = f[dbField]
-                            if dbField != "SURFACE" and dbField != "YEAR" and dbField != "END_YEAR":
-                               fieldValue = "'"+fieldValue+"'"
-                               sqlFieldValues.append(str(fieldValue))
-                        sqlFieldValues = ", ".join(sqlFieldValues)    
-                        line += "INSERT INTO "+vmeTable+" (THE_GEOM, "+sqlFields+")"
-                        line += " VALUES(SDO_UTIL.FROM_WKTGEOMETRY('"+ geom.exportToWkt() +"'), "+ sqlFieldValues +");\n\n"  
-                else:
-                   line = "-- No SQL statement generated for "+vmeFilterField+" = '"+f['VME_AREA_T']+"'. "
-                   line += "Please check the field selected to inherit VME type is correct, and/or its values are correct and match the VME type classification ('VME','BTM_FISH','OTHER').\n\n"
+            line = self.prepare_sql_statement(dataType, sqlType, f)
                 
             """ Write line to SQL file"""
             if line != "":
